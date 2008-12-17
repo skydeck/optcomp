@@ -390,7 +390,8 @@ and skip_else stream =
   let dir, loc = next_directive stream in
   match dir with
     | Dir_if _ ->
-        skip_if stream
+        skip_if stream;
+        skip_else stream
 
     | Dir_else ->
         Loc.raise loc (Stream.Error "#else without #if")
