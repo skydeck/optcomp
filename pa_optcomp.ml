@@ -34,7 +34,7 @@ module Env = Map.Make(struct type t = ident let compare = compare end)
 type env = value Env.t
 
 type directive =
-  | Dir_define of ident * Ast.expr
+  | Dir_let of ident * Ast.expr
   | Dir_default of ident * Ast.expr
   | Dir_if of Ast.expr
   | Dir_else
@@ -212,6 +212,12 @@ let rec skip_space stream = match Stream.peek stream with
   | _ ->
       ()
 
+let parse_equal stream =
+  skip_space stream;
+  match Stream.next stream with
+    | KEYWORD "=", _ -> ()
+    | _, loc -> Loc.raise loc (Stream.Error "'=' expected")
+
 let rec parse_eol stream =
   let tok, loc = Stream.next stream in
   match tok with
@@ -279,17 +285,19 @@ let parse_directive stream = match Stream.npeek 2 stream with
                               ghost) in
 
       begin match dir with
-        | "define" ->
+        | "let" ->
             Stream.junk stream;
             Stream.junk stream;
             let id = parse_ident stream in
+            parse_equal stream;
             let expr = parse_expr stream in
-            Some(Dir_define(id, expr), loc)
+            Some(Dir_let(id, expr), loc)
 
-        | "default" ->
+        | "let_default" ->
             Stream.junk stream;
             Stream.junk stream;
             let id = parse_ident stream in
+            parse_equal stream;
             let expr = parse_expr stream in
             Some(Dir_default(id, expr), loc)
 
@@ -499,7 +507,7 @@ let rec next_token state_ref =
                 state.stack <- l;
                 next_token state_ref
 
-            | Some(Dir_define(id, e), _), _ ->
+            | Some(Dir_let(id, e), _), _ ->
                 define id (eval !env e);
                 next_token state_ref
 
@@ -566,8 +574,10 @@ let stream_filter filter stream =
    +--------------+ *)
 
 let _ =
-  Camlp4.Options.add "-D" (Arg.String parse_command_line_define)
-    "<string> Define for #define directive.";
+  Camlp4.Options.add "-L" (Arg.String parse_command_line_define)
+    "<string> Same as -let.";
+  Camlp4.Options.add "-let" (Arg.String parse_command_line_define)
+    "<string> Binding for a #let directive.";
   Camlp4.Options.add "-I" (Arg.String add_include_dir)
     "<string> Add a directory to #include search path.";
 

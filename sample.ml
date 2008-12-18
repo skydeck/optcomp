@@ -13,9 +13,9 @@
    | Variables |
    +-----------+ *)
 
-(* Variables are defined with the directive define:
+(* Variables are defined with the directive let:
 
-   #define <id> <expr>
+   #let <id> = <expr>
 
    where <id> is any lower or upper identifier and <expr> is any
    well-parenthesed expression, followed by a newline.
@@ -23,10 +23,10 @@
    For instanse here are some correct variable definition:
 *)
 
-#define X 1
-#define y 1 + (1
-               + 1)
-#define z X + y
+#let X = 1
+#let y = 1 + (1
+              + 1)
+#let z = X + y
 
 (* Notes:
 
@@ -36,7 +36,7 @@
    - there is no #ifdef, #ifndef directives, but you can give a
    default value to a variable with:
 
-   #default <id> <expr>
+   #let_default <id> = <expr>
 
    This means that if <id> is not yet defined then it will be defined
    to <expr>.
@@ -44,9 +44,9 @@
    For instance, in:
 *)
 
-#default toto 2
-#define truc true
-#default truc false
+#let_default toto = 2
+#let truc = true
+#let_default truc = false
 
 (* [toto] will be bound to [2] but [truc] will be bound to [true]
 
@@ -80,8 +80,8 @@ type t
 (* It is also possible to split the expression over multible lines by
    using parentheses: *)
 
-#define ocaml_major_version fst ocaml_version
-#define ocaml_minor_version snd ocaml_version
+#let ocaml_major_version = fst ocaml_version
+#let ocaml_minor_version = snd ocaml_version
 
 #if (
   (ocaml_major_version = 3
@@ -122,10 +122,10 @@ let x = 1
    Example:
 *)
 
-#define x (1, 2, (3, 4))
+#let x = (1, 2, (3, 4))
 
-#define y (let (a, b, (c, d)) = x in
-           a + b = c || (max b c = 2 && d = a - 1))
+#let y = (let (a, b, (c, d)) = x in
+          a + b = c || (max b c = 2 && d = a - 1))
 
 (* +-------------------------+
    | #include and #directory |
