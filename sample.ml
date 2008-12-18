@@ -127,6 +127,33 @@ let x = 1
 #let y = (let (a, b, (c, d)) = x in
           a + b = c || (max b c = 2 && d = a - 1))
 
+(* +-------------+
+   | Indentation |
+   +-------------+ *)
+
+(* Any '_' at the beginning of directive names are ignored, so they
+   can be used as indentation: *)
+
+#if true
+
+let x = 1
+
+#__if false
+
+let y = 2
+
+#__elif 1 + 1 = 2
+
+let i = 2
+
+#__else
+
+let o = 42
+
+#__endif
+
+#endif
+
 (* +-------------------------+
    | #include and #directory |
    +-------------------------+ *)

@@ -284,7 +284,17 @@ let parse_directive stream = match Stream.npeek 2 stream with
                               start_line, start_bol, start_bol,
                               ghost) in
 
-      begin match dir with
+      (* Skip indentation underscore *)
+      let rec skip_underscore i =
+        if i = String.length dir then
+          ""
+        else if dir.[i] = '_' then
+          skip_underscore (i + 1)
+        else
+          String.sub dir i (String.length dir - i)
+      in
+
+      begin match skip_underscore 0 with
         | "let" ->
             Stream.junk stream;
             Stream.junk stream;
