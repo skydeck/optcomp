@@ -42,6 +42,7 @@ type directive =
   | Dir_endif
   | Dir_include of Ast.expr
   | Dir_error of Ast.expr
+  | Dir_warning of Ast.expr
   | Dir_directory of Ast.expr
 
 (* +-------------+
@@ -348,6 +349,11 @@ let parse_directive stream = match Stream.npeek 2 stream with
             Stream.junk stream;
             Some(Dir_error(parse_expr stream), loc)
 
+        | "warning" ->
+            Stream.junk stream;
+            Stream.junk stream;
+            Some(Dir_warning(parse_expr stream), loc)
+
         | _ ->
             None
       end
@@ -564,6 +570,10 @@ let rec next_token state_ref =
 
             | Some(Dir_error e, loc), _ ->
                 Loc.raise loc (Failure (eval_string !env e))
+
+            | Some(Dir_warning e, loc), _ ->
+                Syntax.print_warning loc (eval_string !env e);
+                next_token state_ref
 
             | None, _ ->
                 really_read state

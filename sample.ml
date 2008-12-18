@@ -93,17 +93,6 @@ let lazy x = lazy 1
 let x = 1
 #endif
 
-(* +--------+
-   | Errors |
-   +--------+ *)
-
-(* You may also use the #error directive to make the parser to raise
-   an error: *)
-
-#if ocaml_version < (3, 0)
-#error "too old ocaml version, minimum is 3.0"
-#endif
-
 (* +-------------+
    | Expressions |
    +-------------+ *)
@@ -152,6 +141,21 @@ let o = 42
 
 #__endif
 
+#endif
+
+(* +---------------------+
+   | Errors and warnings |
+   +---------------------+ *)
+
+(* You may also use the #error #warning directives to make the parser
+   to fail or print a warning: *)
+
+#if ocaml_version < (3, 0)
+#__error "too old ocaml version, minimum is 3.0"
+#endif
+
+#if ocaml_version < (2048, 0)
+#__warning "plop!"
 #endif
 
 (* +-------------------------+
