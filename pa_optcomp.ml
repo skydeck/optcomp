@@ -430,6 +430,19 @@ type state = {
      directives *)
 }
 
+(* Read and return one token *)
+let really_read state =
+  let tok, loc = Stream.next state.stream in
+  state.bol <- tok = NEWLINE;
+  if tok = EOI then begin
+    (* If end of input is reached call the eoi handler. It may
+       continue if we were parsing an included file *)
+    if state.stack <> [] then
+      Loc.raise loc (Stream.Error "#endif missing");
+    state.on_eoi (tok, loc)
+  end else
+    (tok, loc)
+
 (* Return the next token from a stream, interpreting directives. *)
 let rec next_token state_ref =
   let state = !state_ref in
@@ -535,20 +548,10 @@ let rec next_token state_ref =
                 Loc.raise loc (Failure (eval_string !env e))
 
             | None, _ ->
-                let tok, loc = Stream.next state.stream in
-                state.bol <- tok = NEWLINE;
-                if tok = EOI then begin
-                  if state.stack <> [] then
-                    Loc.raise loc (Stream.Error "#endif missing");
-                  state.on_eoi (tok, loc)
-                end else
-                  (tok, loc)
+                really_read state
 
-        else begin
-          let tok, loc = Stream.next state.stream in
-          state.bol <- tok = NEWLINE;
-          (tok, loc)
-        end
+        else
+          really_read state
 
 let stream_filter filter stream =
   let state_ref = ref { stream = stream;
