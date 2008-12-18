@@ -354,8 +354,8 @@ let parse_directive stream = match Stream.npeek 2 stream with
             Stream.junk stream;
             Some(Dir_warning(parse_expr stream), loc)
 
-        | _ ->
-            None
+        | dir ->
+            Loc.raise loc (Stream.Error (Printf.sprintf "bad directive ``%s''" dir))
       end
 
   | _ ->
@@ -363,8 +363,6 @@ let parse_directive stream = match Stream.npeek 2 stream with
 
 let parse_command_line_define str =
   match Gram.parse_string Syntax.expr (Loc.mk "<command line>") str with
-    | <:expr< $lid:id$ >>
-    | <:expr< $uid:id$ >> -> define id (Bool true)
     | <:expr< $lid:id$ = $e$ >>
     | <:expr< $uid:id$ = $e$ >> -> define id (eval !env e)
     | _ -> invalid_arg str
@@ -446,9 +444,6 @@ type state = {
   mutable stack : context list;
   (* Nested contexts *)
 
-  mutable tmp : (Gram.Token.t * Loc.t) list;
-  (* List of temporary tokens which must be sent first *)
-
   on_eoi : Gram.Token.t * Loc.t -> Gram.Token.t * Loc.t;
   (* Eoi handler, it is used to restore the previous sate on #include
      directives *)
@@ -470,121 +465,109 @@ let really_read state =
 (* Return the next token from a stream, interpreting directives. *)
 let rec next_token state_ref =
   let state = !state_ref in
-  match state.tmp with
-    | x :: l ->
-        state.tmp <- l;
-        x
-
-    | [] ->
-        if state.bol then
-          match parse_directive state.stream, state.stack with
-            | Some(Dir_if e, _), _ ->
-                let rec aux e =
-                  if eval_bool !env e then begin
-                    state.stack <- Ctx_if :: state.stack;
+  if state.bol then
+    match parse_directive state.stream, state.stack with
+      | Some(Dir_if e, _), _ ->
+          let rec aux e =
+            if eval_bool !env e then begin
+              state.stack <- Ctx_if :: state.stack;
+              next_token state_ref
+            end else
+              match next_endif state.stream with
+                | Dir_else ->
+                    state.stack <- Ctx_else :: state.stack;
                     next_token state_ref
-                  end else
-                    match next_endif state.stream with
-                      | Dir_else ->
-                          state.stack <- Ctx_else :: state.stack;
-                          next_token state_ref
 
-                      | Dir_elif e ->
-                          aux e
+                | Dir_elif e ->
+                    aux e
 
-                      | Dir_endif ->
-                          next_token state_ref
+                | Dir_endif ->
+                    next_token state_ref
 
-                      | _ ->
-                          assert false
-                in
-                aux e
+                | _ ->
+                    assert false
+          in
+          aux e
 
-            | Some(Dir_else, loc), ([] | Ctx_else :: _) ->
-                Loc.raise loc (Stream.Error "#else without #if")
+      | Some(Dir_else, loc), ([] | Ctx_else :: _) ->
+          Loc.raise loc (Stream.Error "#else without #if")
 
-            | Some(Dir_elif _, loc), ([] | Ctx_else :: _) ->
-                Loc.raise loc (Stream.Error "#elif without #if")
+      | Some(Dir_elif _, loc), ([] | Ctx_else :: _) ->
+          Loc.raise loc (Stream.Error "#elif without #if")
 
-            | Some(Dir_endif, loc), [] ->
-                Loc.raise loc (Stream.Error "#endif without #if")
+      | Some(Dir_endif, loc), [] ->
+          Loc.raise loc (Stream.Error "#endif without #if")
 
-            | Some(Dir_else, loc), Ctx_if :: l ->
-                skip_else state.stream;
-                state.stack <- l;
-                next_token state_ref
+      | Some(Dir_else, loc), Ctx_if :: l ->
+          skip_else state.stream;
+          state.stack <- l;
+          next_token state_ref
 
-            | Some(Dir_elif _, loc), Ctx_if :: l ->
-                skip_if state.stream;
-                state.stack <- l;
-                next_token state_ref
+      | Some(Dir_elif _, loc), Ctx_if :: l ->
+          skip_if state.stream;
+          state.stack <- l;
+          next_token state_ref
 
-            | Some(Dir_endif, loc), _ :: l ->
-                state.stack <- l;
-                next_token state_ref
+      | Some(Dir_endif, loc), _ :: l ->
+          state.stack <- l;
+          next_token state_ref
 
-            | Some(Dir_let(id, e), _), _ ->
-                define id (eval !env e);
-                next_token state_ref
+      | Some(Dir_let(id, e), _), _ ->
+          define id (eval !env e);
+          next_token state_ref
 
-            | Some(Dir_default(id, e), _), _ ->
-                if not (Env.mem id !env) then
-                  define id (eval !env e);
-                next_token state_ref
+      | Some(Dir_default(id, e), _), _ ->
+          if not (Env.mem id !env) then
+            define id (eval !env e);
+          next_token state_ref
 
-            | Some(Dir_include e, _), _ ->
-                let fname = eval_string !env e in
-                (* Try to looks up in all include directories *)
-                let fname =
-                  try
-                    List.find (fun dir -> Sys.file_exists (Filename.concat dir fname)) !dirs
-                  with
-                      (* Just try in the current directory *)
-                      Not_found -> fname
-                in
-                let ic = open_in fname in
-                let nested_state = {
-                  stream = Gram.filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic));
-                  bol = true;
-                  stack = [];
-                  tmp = [];
-                  on_eoi = (fun _ ->
-                              (* Restore previous state and close channel on
-                                 eoi *)
-                              state_ref := state;
-                              close_in ic;
-                              next_token state_ref)
-                } in
-                (* Replace current state with the new one *)
-                state_ref := nested_state;
-                next_token state_ref
+      | Some(Dir_include e, _), _ ->
+          let fname = eval_string !env e in
+          (* Try to looks up in all include directories *)
+          let fname =
+            try
+              List.find (fun dir -> Sys.file_exists (Filename.concat dir fname)) !dirs
+            with
+                (* Just try in the current directory *)
+                Not_found -> fname
+          in
+          let ic = open_in fname in
+          let nested_state = {
+            stream = Gram.filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic));
+            bol = true;
+            stack = [];
+            on_eoi = (fun _ ->
+                        (* Restore previous state and close channel on
+                           eoi *)
+                        state_ref := state;
+                        close_in ic;
+                        next_token state_ref)
+          } in
+          (* Replace current state with the new one *)
+          state_ref := nested_state;
+          next_token state_ref
 
-            | Some(Dir_directory e, loc), _ ->
-                let dir = eval_string !env e in
-                add_include_dir dir;
-                (* Reput the directive in the stream because camlp4 will use
-                   it *)
-                state.tmp <- List.map (fun tok -> (tok, loc))
-                  [KEYWORD "#"; LIDENT "directory"; BLANKS " "; STRING(dir, String.escaped dir); NEWLINE];
-                next_token state_ref
+      | Some(Dir_directory e, loc), _ ->
+          let dir = eval_string !env e in
+          add_include_dir dir;
+          next_token state_ref
 
-            | Some(Dir_error e, loc), _ ->
-                Loc.raise loc (Failure (eval_string !env e))
+      | Some(Dir_error e, loc), _ ->
+          Loc.raise loc (Failure (eval_string !env e))
 
-            | Some(Dir_warning e, loc), _ ->
-                Syntax.print_warning loc (eval_string !env e);
-                next_token state_ref
+      | Some(Dir_warning e, loc), _ ->
+          Syntax.print_warning loc (eval_string !env e);
+          next_token state_ref
 
-            | None, _ ->
-                really_read state
-
-        else
+      | None, _ ->
           really_read state
+
+  else
+    really_read state
 
 let stream_filter filter stream =
   let state_ref = ref { stream = stream;
                         bol = true;
-                        tmp = [];
                         stack = [];
                         on_eoi = (fun x -> x) } in
   filter (Stream.from (fun _ -> Some(next_token state_ref)))
@@ -594,8 +577,6 @@ let stream_filter filter stream =
    +--------------+ *)
 
 let _ =
-  Camlp4.Options.add "-L" (Arg.String parse_command_line_define)
-    "<string> Same as -let.";
   Camlp4.Options.add "-let" (Arg.String parse_command_line_define)
     "<string> Binding for a #let directive.";
   Camlp4.Options.add "-I" (Arg.String add_include_dir)
