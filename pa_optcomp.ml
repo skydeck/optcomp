@@ -7,6 +7,7 @@
  * This file is a part of optcomp.
  *)
 
+open Camlp4.Sig
 open Camlp4.PreCast
 
 (* Subset of supported caml types *)
@@ -45,6 +46,15 @@ type directive =
   | Dir_warning of Ast.expr
   | Dir_directory of Ast.expr
 
+(* Quotations are evaluated by the token filters, but are expansed
+   after. Evaluated quotations are kept in this table, which quotation
+   id to to values: *)
+let quotations : (int, value) Hashtbl.t = Hashtbl.create 42
+
+let next_quotation_id =
+  let r = ref 0 in
+  fun _ -> incr r; !r
+
 (* +-------------+
    | Environment |
    +-------------+ *)
@@ -57,6 +67,30 @@ let _ =
 
 let dirs = ref []
 let add_include_dir dir = dirs := dir :: !dirs
+
+(* +----------------------------------------+
+   | Value to expression/pattern conversion |
+   +----------------------------------------+ *)
+
+let rec expr_of_value _loc = function
+  | Bool true -> <:expr< true >>
+  | Bool false -> <:expr< false >>
+  | Int x -> <:expr< $int:string_of_int x$ >>
+  | Char x -> <:expr< $chr:Char.escaped x$ >>
+  | String x -> <:expr< $str:String.escaped x$ >>
+  | Tuple [] -> <:expr< () >>
+  | Tuple [x] -> expr_of_value _loc x
+  | Tuple l -> <:expr< $tup:Ast.exCom_of_list (List.map (expr_of_value _loc) l)$ >>
+
+let rec patt_of_value _loc = function
+  | Bool true -> <:patt< true >>
+  | Bool false -> <:patt< false >>
+  | Int x -> <:patt< $int:string_of_int x$ >>
+  | Char x -> <:patt< $chr:Char.escaped x$ >>
+  | String x -> <:patt< $str:String.escaped x$ >>
+  | Tuple [] -> <:patt< () >>
+  | Tuple [x] -> patt_of_value _loc x
+  | Tuple l -> <:patt< $tup:Ast.paCom_of_list (List.map (patt_of_value _loc) l)$ >>
 
 (* +-----------------------+
    | Expression evaluation |
@@ -105,6 +139,8 @@ let rec eval env = function
   | <:expr< $int:x$ >> -> Int(int_of_string x)
   | <:expr< $chr:x$ >> -> Char(Camlp4.Struct.Token.Eval.char x)
   | <:expr< $str:x$ >> -> String(Camlp4.Struct.Token.Eval.string ~strict:() x)
+
+  (* Tuples *)
   | <:expr< $tup:x$ >> -> Tuple(List.map (eval env) (Ast.list_of_expr x []))
 
   (* Variables *)
@@ -471,14 +507,26 @@ type state = {
 let really_read state =
   let tok, loc = Stream.next state.stream in
   state.bol <- tok = NEWLINE;
-  if tok = EOI then begin
-    (* If end of input is reached call the eoi handler. It may
-       continue if we were parsing an included file *)
-    if state.stack <> [] then
-      Loc.raise loc (Stream.Error "#endif missing");
-    state.on_eoi (tok, loc)
-  end else
-    (tok, loc)
+  match tok with
+    | QUOTATION ({ q_name = "optcomp" } as quot) ->
+        let id = next_quotation_id () in
+        Hashtbl.add quotations id (eval !env (Gram.parse_string
+                                                Syntax.expr_eoi
+                                                (Loc.move `start quot.q_shift loc)
+                                                quot.q_contents));
+
+        (* Replace the quotation by its id *)
+        (QUOTATION { quot with q_contents = string_of_int id }, loc)
+
+    | EOI ->
+        (* If end of input is reached, we call the eoi handler. It may
+           continue if we were parsing an included file *)
+        if state.stack <> [] then
+          Loc.raise loc (Stream.Error "#endif missing");
+        state.on_eoi (tok, loc)
+
+    | _ ->
+        (tok, loc)
 
 (* Return the next token from a stream, interpreting directives. *)
 let rec next_token state_ref =
@@ -590,6 +638,16 @@ let stream_filter filter stream =
                         on_eoi = (fun x -> x) } in
   filter (Stream.from (fun _ -> Some(next_token state_ref)))
 
+(* +----------------------+
+   | Quotations expansion |
+   +----------------------+ *)
+
+let expand f loc _ contents =
+  try
+    f loc (Hashtbl.find quotations (int_of_string contents))
+  with
+      exn -> Loc.raise loc (Failure "fatal error in optcomp!")
+
 (* +--------------+
    | Registration |
    +--------------+ *)
@@ -601,5 +659,8 @@ let _ =
     "<string> Same as -let.";
   Camlp4.Options.add "-I" (Arg.String add_include_dir)
     "<string> Add a directory to #include search path.";
+
+  Syntax.Quotation.add "optcomp" Syntax.Quotation.DynAst.expr_tag (expand expr_of_value);
+  Syntax.Quotation.add "optcomp" Syntax.Quotation.DynAst.patt_tag (expand patt_of_value);
 
   Gram.Token.Filter.define_filter (Gram.get_filter ()) stream_filter
