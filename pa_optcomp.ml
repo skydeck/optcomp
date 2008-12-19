@@ -312,6 +312,22 @@ let parse_directive stream = match Stream.npeek 2 stream with
             let expr = parse_expr stream in
             Some(Dir_default(id, expr), loc)
 
+        (* For compatibility *)
+        | "define" ->
+            Stream.junk stream;
+            Stream.junk stream;
+            let id = parse_ident stream in
+            let expr = parse_expr stream in
+            Some(Dir_let(id, expr), loc)
+
+        (* For compatibility *)
+        | "default" ->
+            Stream.junk stream;
+            Stream.junk stream;
+            let id = parse_ident stream in
+            let expr = parse_expr stream in
+            Some(Dir_default(id, expr), loc)
+
         | "if" ->
             Stream.junk stream;
             Stream.junk stream;
@@ -363,6 +379,8 @@ let parse_directive stream = match Stream.npeek 2 stream with
 
 let parse_command_line_define str =
   match Gram.parse_string Syntax.expr (Loc.mk "<command line>") str with
+    | <:expr< $lid:id$ >>
+    | <:expr< $uid:id$ >> -> define id (Bool true)
     | <:expr< $lid:id$ = $e$ >>
     | <:expr< $uid:id$ = $e$ >> -> define id (eval !env e)
     | _ -> invalid_arg str
@@ -579,6 +597,8 @@ let stream_filter filter stream =
 let _ =
   Camlp4.Options.add "-let" (Arg.String parse_command_line_define)
     "<string> Binding for a #let directive.";
+  Camlp4.Options.add "-D" (Arg.String parse_command_line_define)
+    "<string> Same as -let.";
   Camlp4.Options.add "-I" (Arg.String add_include_dir)
     "<string> Add a directory to #include search path.";
 
