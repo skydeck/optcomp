@@ -120,26 +120,26 @@ let x = 1
    | Indentation |
    +-------------+ *)
 
-(* Any '_' at the beginning of directive names are ignored, so they
-   can be used as indentation: *)
+(* Spaces and comments are ignored between the "#" at the beginning of the line
+   and the directive name, so directives can be indented like that: *)
 
 #if true
 
 let x = 1
 
-#__if false
+#  if false
 
 let y = 2
 
-#__elif 1 + 1 = 2
+# (* plop *) elif 1 + 1 = 2
 
 let i = 2
 
-#__else
+#  else
 
 let o = 42
 
-#__endif
+#  endif
 
 #endif
 
@@ -151,11 +151,11 @@ let o = 42
    to fail or print a warning: *)
 
 #if ocaml_version < (3, 0)
-#__error "too old ocaml version, minimum is 3.0"
+#  error "too old ocaml version, minimum is 3.0"
 #endif
 
 #if ocaml_version < (2048, 0)
-#__warning "plop!"
+#  warning "plop!"
 #endif
 
 (* +-------------------------+

@@ -46,6 +46,10 @@ type directive =
   | Dir_warning of Ast.expr
   | Dir_directory of Ast.expr
 
+  (* This one is not part of optcomp but this is one of the directives
+     handled by camlp4 we probably want to use. *)
+  | Dir_default_quotation of Ast.expr
+
 (* Quotations are evaluated by the token filters, but are expansed
    after. Evaluated quotations are kept in this table, which quotation
    id to to values: *)
@@ -265,12 +269,28 @@ let rec parse_eol stream =
     | _ ->
         Loc.raise loc (Stream.Error "end of line expected")
 
+(* Return wether a keyword can be interpreted as an identifier *)
+let keyword_is_id str =
+  let rec aux i =
+    if i = String.length str then
+      true
+    else
+      match str.[i] with
+        | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' ->
+            aux (i + 1)
+        | _ ->
+            false
+  in
+  aux 0
+
 let parse_ident stream =
   skip_space stream;
   let tok, loc = Stream.next stream in
   begin match tok with
     | LIDENT id | UIDENT id ->
         id
+    | KEYWORD kwd when keyword_is_id kwd ->
+        kwd
     | _ ->
         Loc.raise loc (Stream.Error "identifier expected")
   end
@@ -309,8 +329,10 @@ let parse_expr stream =
   Gram.parse_tokens_after_filter Syntax.expr_eoi
     (Gram.Token.Filter.filter (Gram.get_filter ()) (Stream.from next_token))
 
-let parse_directive stream = match Stream.npeek 2 stream with
-  | [KEYWORD "#", loc; (LIDENT dir | KEYWORD dir), _] ->
+let parse_directive stream = match Stream.peek stream with
+  | Some(KEYWORD "#", loc) ->
+      Stream.junk stream;
+
       (* Move the location to the beginning of the line *)
       let (file_name,
            start_line, start_bol, start_off,
@@ -321,28 +343,15 @@ let parse_directive stream = match Stream.npeek 2 stream with
                               start_line, start_bol, start_bol,
                               ghost) in
 
-      (* Skip indentation underscore *)
-      let rec skip_underscore i =
-        if i = String.length dir then
-          ""
-        else if dir.[i] = '_' then
-          skip_underscore (i + 1)
-        else
-          String.sub dir i (String.length dir - i)
-      in
+      begin match parse_ident stream with
 
-      begin match skip_underscore 0 with
         | "let" ->
-            Stream.junk stream;
-            Stream.junk stream;
             let id = parse_ident stream in
             parse_equal stream;
             let expr = parse_expr stream in
             Some(Dir_let(id, expr), loc)
 
         | "let_default" ->
-            Stream.junk stream;
-            Stream.junk stream;
             let id = parse_ident stream in
             parse_equal stream;
             let expr = parse_expr stream in
@@ -350,61 +359,44 @@ let parse_directive stream = match Stream.npeek 2 stream with
 
         (* For compatibility *)
         | "define" ->
-            Stream.junk stream;
-            Stream.junk stream;
             let id = parse_ident stream in
             let expr = parse_expr stream in
             Some(Dir_let(id, expr), loc)
 
         (* For compatibility *)
         | "default" ->
-            Stream.junk stream;
-            Stream.junk stream;
             let id = parse_ident stream in
             let expr = parse_expr stream in
             Some(Dir_default(id, expr), loc)
 
         | "if" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_if(parse_expr stream), loc)
 
         | "else" ->
-            Stream.junk stream;
-            Stream.junk stream;
             parse_eol stream;
             Some(Dir_else, loc)
 
         | "elif" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_elif(parse_expr stream), loc)
 
         | "endif" ->
-            Stream.junk stream;
-            Stream.junk stream;
             parse_eol stream;
             Some(Dir_endif, loc)
 
         | "include" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_include(parse_expr stream), loc)
 
         | "directory" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_directory(parse_expr stream), loc)
 
         | "error" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_error(parse_expr stream), loc)
 
         | "warning" ->
-            Stream.junk stream;
-            Stream.junk stream;
             Some(Dir_warning(parse_expr stream), loc)
+
+        | "default_quotation" ->
+            Some(Dir_default_quotation(parse_expr stream), loc)
 
         | dir ->
             Loc.raise loc (Stream.Error (Printf.sprintf "bad directive ``%s''" dir))
@@ -415,8 +407,6 @@ let parse_directive stream = match Stream.npeek 2 stream with
 
 let parse_command_line_define str =
   match Gram.parse_string Syntax.expr (Loc.mk "<command line>") str with
-    | <:expr< $lid:id$ >>
-    | <:expr< $uid:id$ >> -> define id (Bool true)
     | <:expr< $lid:id$ = $e$ >>
     | <:expr< $uid:id$ = $e$ >> -> define id (eval !env e)
     | _ -> invalid_arg str
@@ -625,6 +615,10 @@ let rec next_token state_ref =
           Syntax.print_warning loc (eval_string !env e);
           next_token state_ref
 
+      | Some(Dir_default_quotation e, loc), _ ->
+          Syntax.Quotation.default := eval_string !env e;
+          next_token state_ref
+
       | None, _ ->
           really_read state
 
@@ -655,8 +649,6 @@ let expand f loc _ contents =
 let _ =
   Camlp4.Options.add "-let" (Arg.String parse_command_line_define)
     "<string> Binding for a #let directive.";
-  Camlp4.Options.add "-D" (Arg.String parse_command_line_define)
-    "<string> Same as -let.";
   Camlp4.Options.add "-I" (Arg.String add_include_dir)
     "<string> Add a directory to #include search path.";
 
