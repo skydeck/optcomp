@@ -182,6 +182,8 @@ let o = 42
    - #directory directives are interpreted by both optcomp and camlp4
 *)
 
+#include "sample_incl.ml"
+
 (* +-----------------------------------+
    | Access to definitions in the code |
    +-----------------------------------+ *)
@@ -194,4 +196,4 @@ let o = 42
 
 let print_info _ =
   let (major, minor) = <:optcomp< totolib_version >> in
-  print_endline "sample is compiled with totolib version %d.%d" major minor
+  Printf.printf "sample is compiled with totolib version %d.%d" major minor
