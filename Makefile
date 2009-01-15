@@ -10,8 +10,7 @@ OF = ocamlfind
 NAME = optcomp
 VERSION = $(shell head -n 1 VERSION)
 
-.PHONY: all test syntax install prefix
-
+.PHONY: all
 all: META pa_optcomp.cmo
 
 pa_optcomp.cmo: pa_optcomp.ml
@@ -20,14 +19,18 @@ pa_optcomp.cmo: pa_optcomp.ml
 META: VERSION META.in
 	sed -e 's/@VERSION@/$(VERSION)/' META.in > META
 
+.PHONY: dist
 dist:
 	DARCS_REPO=$(PWD) darcs dist --dist-name $(NAME)-$(VERSION)
 
+.PHONY: install
 install:
 	$(OF) install $(NAME) META pa_optcomp.cmo sample.ml
 
+.PHONY: uninstall
 uninstall:
 	$(OF) remove $(NAME)
 
+.PHONY: clean
 clean:
 	rm -f *.cm* META $(NAME)-*.tar.gz
