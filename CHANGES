@@ -1,0 +1,15 @@
+= 1.1 =
+
+  * fix: else blocks didn't get dropped correctly
+  * fix: parsing stopped after an #include
+  * syntax modifications (more caml-like):
+     - allow indentation
+     - "#define x value" -> "#let x = value"
+     - "#default x value" -> "#let_default x = value"
+  * new #warning directive
+  * adding of the "<:optcomp< expr >>" quotation
+  * generation of dependencies for compilation with a makefile
+
+= 1.0 =
+
+  * first release
