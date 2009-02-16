@@ -1,0 +1,5 @@
+# -*- conf -*-
+<pa_optcomp.ml>: syntax_camlp4o, pkg_camlp4, pkg_camlp4.quotations.o
+<pa_optcomp.*>: pkg_camlp4.lib
+<optcomp.*>: pkg_camlp4.lib
+<optcomp_{o,r}.*>: pkg_dynlink, use_camlp4_full

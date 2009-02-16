@@ -62,16 +62,39 @@ But this one will be accepted by camlp4+optcomp:
 
   To install optcomp type:
 
-  $ make install
+  $ make PREFIX=<prefix> install
 
   and to uninstall it:
 
-  $ make uninstall
+  $ make PREFIX=<prefix> uninstall
 
 * How to use it
 
-  You can use optcomp with ocamlfind, with the package optcomp or you
-  can directly include it in your project.
+** As a syntax extension
+
+  You can use optcomp as a regular syntax extension with camlp4. If
+  you have ocamlfind installed, you can use:
+
+  $ ocamlfind ocamlc -syntax camlp4o -pakcage camlp4,optcomp file.ml
+
+  You can also embed pa_optcomp.ml in your project sources.
+
+** As a preprocessor
+
+  Optcomp can be use as a preprocessor, for that there is the two
+  executable optcomp_o and optcomp_r:
+
+  - optcomp_o is for when directives are written using original syntax
+  - optcomp_r is for when directives are written using revised syntax
+
+  To use them:
+
+  $ ocamlc -pp optcomp_o <file.ml>
+  $ ocamlc -pp optcomp_r <file.ml>
+
+  The preprocessor version is especially usefull for .mli because it
+  does not do any pretty-printing. Camlp4 does that and it does not
+  always interact well with ocamldoc.
 
 * Hacking
 
