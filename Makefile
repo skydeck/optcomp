@@ -12,28 +12,25 @@ OC = ocamlbuild
 endif
 OF = ocamlfind
 
-PREFIX = /usr/local
 NAME = optcomp
+ALL = pa_optcomp.cmo optcomp_o.byte optcomp_r.byte
 
 .PHONY: all
 all:
-	$(OC) META pa_optcomp.cmo optcomp_o.byte optcomp_r.byte
+	$(OC) META $(ALL)
 
 .PHONY: dist
 dist:
-	DARCS_REPO=$(PWD) darcs dist --dist-name $(NAME)-$(VERSION)
+	DARCS_REPO=$(PWD) darcs dist --dist-name $(NAME)-`head -n 1 VERSION`
 
 .PHONY: install
 install:
-	$(OF) install $(NAME) _build/META _build/pa_optcomp.cmo \
+	$(OF) install $(NAME) _build/META $(ALL:%=_build/%) \
 	      sample.ml sample_incl.ml
-	install -m 0755 optcomp_o.byte $(PREFIX)/bin/optcomp_o
-	install -m 0755 optcomp_r.byte $(PREFIX)/bin/optcomp_r
 
 .PHONY: uninstall
 uninstall:
 	$(OF) remove $(NAME)
-	rm -f $(PREFIX)/bin/optcomp_o $(PREFIX)/bin/optcomp_r
 
 .PHONY: clean
 clean:

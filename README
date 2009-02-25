@@ -62,11 +62,11 @@ But this one will be accepted by camlp4+optcomp:
 
   To install optcomp type:
 
-  $ make PREFIX=<prefix> install
+  $ make install
 
   and to uninstall it:
 
-  $ make PREFIX=<prefix> uninstall
+  $ make uninstall
 
 * How to use it
 
@@ -89,12 +89,12 @@ But this one will be accepted by camlp4+optcomp:
 
   To use them:
 
-  $ ocamlc -pp optcomp_o <file.ml>
-  $ ocamlc -pp optcomp_r <file.ml>
+  $ ocamlc -pp 'ocamlfind optcomp/optcomp_o.byte' <file.ml>
+  $ ocamlc -pp 'ocamlfind optcomp/optcomp_r.byte' <file.ml>
 
   The preprocessor version is especially usefull for .mli because it
-  does not do any pretty-printing. Camlp4 does that and it does not
-  always interact well with ocamldoc.
+  does not modify the layout of your code, which is important for
+  ocamldoc.
 
 * Hacking
 

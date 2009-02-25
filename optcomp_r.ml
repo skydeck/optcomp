@@ -7,7 +7,7 @@
  * This file is a part of optcomp.
  *)
 
-(* Standalone version, revised syntax *)
+(* Standalone version, with directives in revised syntax *)
 
 let module M = Camlp4OCamlRevisedParser.Make(Camlp4.PreCast.Syntax) in ()
 
