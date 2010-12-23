@@ -10,6 +10,9 @@
 open Camlp4.Sig
 open Camlp4.PreCast
 
+external filter : 'a Gram.not_filtered -> 'a = "%identity"
+external not_filtered : 'a -> 'a Gram.not_filtered = "%identity"
+
 (* Subset of supported caml types *)
 type typ =
   | Tvar of string
@@ -359,8 +362,8 @@ let parse_expr stream =
                x)
   in
 
-  Gram.parse_tokens_after_filter Syntax.expr_eoi
-    (Gram.Token.Filter.filter (Gram.get_filter ()) (Stream.from next_token))
+  Gram.parse_tokens_before_filter Syntax.expr_eoi
+    (not_filtered (Stream.from next_token))
 
 let parse_directive stream = match Stream.peek stream with
   | Some(KEYWORD "#", loc) ->
@@ -623,7 +626,7 @@ let rec next_token state_ref =
           dependencies := String_set.add fname !dependencies;
           let ic = open_in fname in
           let nested_state = {
-            stream = Gram.filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic));
+            stream = Gram.Token.Filter.filter (Gram.get_filter ()) (filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic)));
             bol = true;
             stack = [];
             on_eoi = (fun _ ->
