@@ -82,5 +82,6 @@ let main () =
     in
     print "" (-1) (-1) File_map.empty token_stream
   with exn ->
+    flush stdout;
     Format.eprintf "@[<v0>%a@]@." Camlp4.ErrorHandler.print exn;
     exit 1
