@@ -22,3 +22,11 @@ val define : string -> value -> unit
 
 val filter : Camlp4.PreCast.Gram.Token.Filter.token_filter
   (** The optcomp stream filter. *)
+
+val get_quotation_value : string -> value
+  (** [get_quotation_value id] returns the value registered for the
+      given quotation.
+
+      After filtering a token stream, optcomp quotations contents are
+      replaced by identifiers, this function returns the value
+      assocaited to a given quotation identifier. *)

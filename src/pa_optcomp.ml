@@ -62,9 +62,9 @@ let next_quotation_id =
   let r = ref 0 in
   fun _ -> incr r; !r
 
-(* +-------------+
-   | Environment |
-   +-------------+ *)
+(* +-----------------------------------------------------------------+
+   | Environment                                                     |
+   +-----------------------------------------------------------------+ *)
 
 let env = ref Env.empty
 let define id value = env := Env.add id value !env
@@ -75,9 +75,9 @@ let _ =
 let dirs = ref []
 let add_include_dir dir = dirs := dir :: !dirs
 
-(* +--------------+
-   | Dependencies |
-   +--------------+ *)
+(* +-----------------------------------------------------------------+
+   | Dependencies                                                    |
+   +-----------------------------------------------------------------+ *)
 
 module String_set = Set.Make(String)
 
@@ -108,9 +108,9 @@ let write_depencies () =
         end;
         close_out oc
 
-(* +----------------------------------------+
-   | Value to expression/pattern conversion |
-   +----------------------------------------+ *)
+(* +-----------------------------------------------------------------+
+   | Value to expression/pattern conversion                          |
+   +-----------------------------------------------------------------+ *)
 
 let rec expr_of_value _loc = function
   | Bool true -> <:expr< true >>
@@ -132,9 +132,9 @@ let rec patt_of_value _loc = function
   | Tuple [x] -> patt_of_value _loc x
   | Tuple l -> <:patt< $tup:Ast.paCom_of_list (List.map (patt_of_value _loc) l)$ >>
 
-(* +-----------------------+
-   | Expression evaluation |
-   +-----------------------+ *)
+(* +-----------------------------------------------------------------+
+   | Expression evaluation                                           |
+   +-----------------------------------------------------------------+ *)
 
 let rec type_of_value = function
   | Bool _ -> Tbool
@@ -278,9 +278,9 @@ and eval_pair env e = match eval env e with
   | Tuple [x; y] -> (x, y)
   | v -> invalid_type (Ast.loc_of_expr e) (Ttuple [Tvar "a"; Tvar "b"]) (type_of_value v)
 
-(* +-----------------------+
-   | Parsing of directives |
-   +-----------------------+ *)
+(* +-----------------------------------------------------------------+
+   | Parsing of directives                                           |
+   +-----------------------------------------------------------------+ *)
 
 let rec skip_space stream = match Stream.peek stream with
   | Some((BLANKS _ | COMMENT _), _) ->
@@ -447,9 +447,9 @@ let parse_command_line_define str =
     | <:expr< $uid:id$ = $e$ >> -> define id (eval !env e)
     | _ -> invalid_arg str
 
-(* +----------------+
-   | BLock skipping |
-   +----------------+ *)
+(* +-----------------------------------------------------------------+
+   | Block skipping                                                  |
+   +-----------------------------------------------------------------+ *)
 
 let rec skip_line stream =
   match Stream.next stream with
@@ -507,9 +507,9 @@ and skip_else stream =
     | _ ->
         skip_else stream
 
-(* +-----------------+
-   | Token filtering |
-   +-----------------+ *)
+(* +-----------------------------------------------------------------+
+   | Token filtering                                                 |
+   +-----------------------------------------------------------------+ *)
 
 type context = Ctx_if | Ctx_else
 
@@ -682,19 +682,22 @@ let stream_filter filter stream =
 
 let filter stream = stream_filter (fun x -> x) stream
 
-(* +----------------------+
-   | Quotations expansion |
-   +----------------------+ *)
+(* +-----------------------------------------------------------------+
+   | Quotations expansion                                            |
+   +-----------------------------------------------------------------+ *)
+
+let get_quotation_value str =
+  Hashtbl.find quotations (int_of_string str)
 
 let expand f loc _ contents =
   try
-    f loc (Hashtbl.find quotations (int_of_string contents))
-  with
-      exn -> Loc.raise loc (Failure "fatal error in optcomp!")
+    f loc (get_quotation_value contents)
+  with exn ->
+    Loc.raise loc (Failure "fatal error in optcomp!")
 
-(* +--------------+
-   | Registration |
-   +--------------+ *)
+(* +-----------------------------------------------------------------+
+   | Registration                                                    |
+   +-----------------------------------------------------------------+ *)
 
 let _ =
   Camlp4.Options.add "-let" (Arg.String parse_command_line_define)
