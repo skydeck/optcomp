@@ -12,12 +12,38 @@
 open Camlp4.PreCast
 open Camlp4.Sig
 
-let filter_keywords stream =
-  Stream.from (fun _ -> match Stream.next stream with
-                 | (SYMBOL ("#"|"="|"("|")"|"{"|"}"|"["|"]" as sym), loc) -> Some(KEYWORD sym, loc)
-                 | x -> Some x)
+(* +-----------------------------------------------------------------+
+   | The lexer                                                       |
+   +-----------------------------------------------------------------+ *)
 
 external filter : 'a Gram.not_filtered -> 'a = "%identity"
+
+(* A lexer that does not filter tokens. *)
+let lexer fname ic =
+  let stream = filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic)) in
+  let pos = ref None in
+  (* Fix the Camlp4 lexer. Start locations are often wrong but end
+     locations are always correct. *)
+  let next i =
+    let tok, loc = Stream.next stream in
+    match !pos with
+      | None ->
+          pos := Some loc;
+          Some (tok, loc)
+      | Some loc' ->
+          pos := Some loc;
+          if Loc.file_name loc' = Loc.file_name loc then
+            let _, _, _, _, a, b, c, _ = Loc.to_tuple loc'
+            and n, _, _, _, d, e, f, g = Loc.to_tuple loc in
+            Some (tok, Loc.of_tuple (n, a, b, c, d, e, f, g))
+          else
+            Some (tok, loc)
+  in
+  Stream.from next
+
+(* +-----------------------------------------------------------------+
+   | Printer                                                         |
+   +-----------------------------------------------------------------+ *)
 
 module File_map = Map.Make(String)
 
@@ -55,7 +81,7 @@ let rec print current_fname current_line current_col files token_stream =
         else begin
           (* Otherwise print a location directive. *)
           if current_col > 0 then print_char '\n';
-          Printf.printf "#%d %S\n" line fname;
+          Printf.printf "# %d %S\n" line fname;
           (* Ensure that the string start at the right column. *)
           for i = 1 to col do
             print_char ' '
@@ -63,6 +89,10 @@ let rec print current_fname current_line current_col files token_stream =
           print_string str
         end;
         print fname (Loc.stop_line loc) (Loc.stop_off loc - Loc.stop_bol loc) files token_stream
+
+(* +-----------------------------------------------------------------+
+   | Entry point                                                     |
+   +-----------------------------------------------------------------+ *)
 
 let main () =
   if Array.length Sys.argv <> 2 then begin
@@ -73,13 +103,7 @@ let main () =
     let fname = Sys.argv.(1) in
     let ic = open_in fname in
     (* Create the filtered token stream. *)
-    let token_stream =
-      Pa_optcomp.filter
-        (filter_keywords
-           (filter
-              (Gram.lex (Loc.mk fname)
-                 (Stream.of_channel ic))))
-    in
+    let token_stream = Pa_optcomp.filter ~lexer (lexer fname ic) in
     print "" (-1) (-1) File_map.empty token_stream
   with exn ->
     flush stdout;

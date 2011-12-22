@@ -133,6 +133,52 @@ let rec patt_of_value _loc = function
   | Tuple l -> <:patt< $tup:Ast.paCom_of_list (List.map (patt_of_value _loc) l)$ >>
 
 (* +-----------------------------------------------------------------+
+   | Value printing                                                  |
+   +-----------------------------------------------------------------+ *)
+
+let string_of_value string_of_bool v =
+  let buf = Buffer.create 128 in
+  let rec aux = function
+    | Bool b ->
+        Buffer.add_string buf (string_of_bool b)
+    | Int n ->
+        Buffer.add_string buf (string_of_int n)
+    | Char ch ->
+        Buffer.add_string buf (Char.escaped ch)
+    | String s ->
+        Buffer.add_char buf '"';
+        Buffer.add_string buf (String.escaped s);
+        Buffer.add_char buf '"'
+    | Tuple [] ->
+        Buffer.add_string buf "()"
+    | Tuple (x :: l) ->
+        Buffer.add_char buf '(';
+        aux x;
+        List.iter
+          (fun x ->
+             Buffer.add_string buf ", ";
+             aux x)
+          l;
+        Buffer.add_char buf ')'
+  in
+  aux v;
+  Buffer.contents buf
+
+let string_of_value_o v =
+  string_of_value
+    (function
+       | true -> "true"
+       | false -> "false")
+    v
+
+let string_of_value_r v =
+  string_of_value
+    (function
+       | true -> "True"
+       | false -> "False")
+    v
+
+(* +-----------------------------------------------------------------+
    | Expression evaluation                                           |
    +-----------------------------------------------------------------+ *)
 
@@ -292,7 +338,7 @@ let rec skip_space stream = match Stream.peek stream with
 let parse_equal stream =
   skip_space stream;
   match Stream.next stream with
-    | KEYWORD "=", _ -> ()
+    | (KEYWORD "=" | SYMBOL "="), _ -> ()
     | _, loc -> Loc.raise loc (Stream.Error "'=' expected")
 
 let rec parse_eol stream =
@@ -342,19 +388,19 @@ let parse_expr stream =
            | (NEWLINE, loc), [] ->
                EOI, loc
 
-           | (KEYWORD("(" | "[" | "{" as b), _) as x, l ->
+           | ((KEYWORD ("(" | "[" | "{" as b) | SYMBOL ("(" | "[" | "{" as b)), _) as x, l ->
                opened_brackets := b :: l;
                x
 
-           | (KEYWORD ")", loc) as x, "(" :: l ->
+           | ((KEYWORD ")" | SYMBOL ")"), loc) as x, "(" :: l ->
                opened_brackets := l;
                x
 
-           | (KEYWORD "]", loc) as x, "[" :: l ->
+           | ((KEYWORD "]" | SYMBOL "]"), loc) as x, "[" :: l ->
                opened_brackets := l;
                x
 
-           | (KEYWORD "}", loc) as x, "{" :: l ->
+           | ((KEYWORD "}" | SYMBOL "}"), loc) as x, "{" :: l ->
                opened_brackets := l;
                x
 
@@ -366,7 +412,7 @@ let parse_expr stream =
     (not_filtered (Stream.from next_token))
 
 let parse_directive stream = match Stream.peek stream with
-  | Some(KEYWORD "#", loc) ->
+  | Some((KEYWORD "#" | SYMBOL "#"), loc) ->  begin
       Stream.junk stream;
 
       (* Move the location to the beginning of the line *)
@@ -379,7 +425,7 @@ let parse_directive stream = match Stream.peek stream with
                               start_line, start_bol, start_bol,
                               ghost) in
 
-      begin match parse_ident stream with
+      match parse_ident stream with
 
         | "let" ->
             let id = parse_ident stream in
@@ -436,7 +482,7 @@ let parse_directive stream = match Stream.peek stream with
 
         | dir ->
             Loc.raise loc (Stream.Error (Printf.sprintf "bad directive ``%s''" dir))
-      end
+    end
 
   | _ ->
       None
@@ -555,7 +601,7 @@ let really_read state =
         (tok, loc)
 
 (* Return the next token from a stream, interpreting directives. *)
-let rec next_token state_ref =
+let rec next_token lexer state_ref =
   let state = !state_ref in
   if state.bol then
     match parse_directive state.stream, state.stack with
@@ -563,18 +609,18 @@ let rec next_token state_ref =
           let rec aux e =
             if eval_bool !env e then begin
               state.stack <- Ctx_if :: state.stack;
-              next_token state_ref
+              next_token lexer state_ref
             end else
               match next_endif state.stream with
                 | Dir_else ->
                     state.stack <- Ctx_else :: state.stack;
-                    next_token state_ref
+                    next_token lexer state_ref
 
                 | Dir_elif e ->
                     aux e
 
                 | Dir_endif ->
-                    next_token state_ref
+                    next_token lexer state_ref
 
                 | _ ->
                     assert false
@@ -593,25 +639,25 @@ let rec next_token state_ref =
       | Some(Dir_else, loc), Ctx_if :: l ->
           skip_else state.stream;
           state.stack <- l;
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_elif _, loc), Ctx_if :: l ->
           skip_if state.stream;
           state.stack <- l;
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_endif, loc), _ :: l ->
           state.stack <- l;
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_let(id, e), _), _ ->
           define id (eval !env e);
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_default(id, e), _), _ ->
           if not (Env.mem id !env) then
             define id (eval !env e);
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_include e, _), _ ->
           let fname = eval_string !env e in
@@ -626,7 +672,7 @@ let rec next_token state_ref =
           dependencies := String_set.add fname !dependencies;
           let ic = open_in fname in
           let nested_state = {
-            stream = Gram.Token.Filter.filter (Gram.get_filter ()) (filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic)));
+            stream = lexer fname ic;
             bol = true;
             stack = [];
             on_eoi = (fun _ ->
@@ -634,27 +680,27 @@ let rec next_token state_ref =
                            eoi *)
                         state_ref := state;
                         close_in ic;
-                        next_token state_ref)
+                        next_token lexer state_ref)
           } in
           (* Replace current state with the new one *)
           state_ref := nested_state;
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_directory e, loc), _ ->
           let dir = eval_string !env e in
           add_include_dir dir;
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_error e, loc), _ ->
           Loc.raise loc (Failure (eval_string !env e))
 
       | Some(Dir_warning e, loc), _ ->
           Syntax.print_warning loc (eval_string !env e);
-          next_token state_ref
+          next_token lexer state_ref
 
       | Some(Dir_default_quotation e, loc), _ ->
           Syntax.Quotation.default := eval_string !env e;
-          next_token state_ref
+          next_token lexer state_ref
 
       | None, _ ->
           really_read state
@@ -662,25 +708,29 @@ let rec next_token state_ref =
   else
     really_read state
 
-let stream_filter filter stream =
+let default_lexer fname ic =
+  Token.Filter.filter (Gram.get_filter ()) (filter (Gram.lex (Loc.mk fname) (Stream.of_channel ic)))
+
+let stream_filter lexer filter stream =
   (* Set the source filename *)
-  begin match !source_filename with
-    | Some _ ->
-        ()
-    | None ->
-        match Stream.peek stream with
-          | None ->
-              ()
-          | Some(tok, loc) ->
-              source_filename := Some(Loc.file_name loc)
+  begin
+    match !source_filename with
+      | Some _ ->
+          ()
+      | None ->
+          match Stream.peek stream with
+            | None ->
+                ()
+            | Some(tok, loc) ->
+                source_filename := Some(Loc.file_name loc)
   end;
   let state_ref = ref { stream = stream;
                         bol = true;
                         stack = [];
                         on_eoi = (fun x -> x) } in
-  filter (Stream.from (fun _ -> Some(next_token state_ref)))
+  filter (Stream.from (fun _ -> Some(next_token lexer state_ref)))
 
-let filter stream = stream_filter (fun x -> x) stream
+let filter ?(lexer=default_lexer) stream = stream_filter lexer (fun x -> x) stream
 
 (* +-----------------------------------------------------------------+
    | Quotations expansion                                            |
@@ -713,4 +763,4 @@ let _ =
   Syntax.Quotation.add "optcomp" Syntax.Quotation.DynAst.expr_tag (expand expr_of_value);
   Syntax.Quotation.add "optcomp" Syntax.Quotation.DynAst.patt_tag (expand patt_of_value);
 
-  Gram.Token.Filter.define_filter (Gram.get_filter ()) stream_filter
+  Gram.Token.Filter.define_filter (Gram.get_filter ()) (stream_filter default_lexer)
