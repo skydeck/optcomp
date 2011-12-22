@@ -680,6 +680,8 @@ let stream_filter filter stream =
                         on_eoi = (fun x -> x) } in
   filter (Stream.from (fun _ -> Some(next_token state_ref)))
 
+let filter stream = stream_filter (fun x -> x) stream
+
 (* +----------------------+
    | Quotations expansion |
    +----------------------+ *)

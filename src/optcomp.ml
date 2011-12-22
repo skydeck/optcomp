@@ -111,7 +111,7 @@ let main () =
     let ic = open_in fname in
     Stream.iter
       (fun (tok, loc) -> print_token tok)
-      (Pa_optcomp.stream_filter (fun x -> x)
+      (Pa_optcomp.filter
          (filter_keywords
             (filter
                (Gram.lex (Loc.mk fname)
