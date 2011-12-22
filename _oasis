@@ -1,0 +1,71 @@
+# +-------------------------------------------------------------------+
+# | Package parameters                                                |
+# +-------------------------------------------------------------------+
+
+OASISFormat: 0.1
+OCamlVersion: >= 3.12
+Name: optcomp
+Version: 1.2
+LicenseFile: LICENSE
+License: BSD3
+Authors: Jérémie Dimino
+Homepage: http://optcomp.forge.ocamlcore.org/
+BuildTools: ocamlbuild
+Plugins: DevFiles (0.2), META (0.2)
+Synopsis: Optional compilation with cpp-like directives
+Description:
+  Optcomp is a syntax extension which handles cpp-like directives in
+  ocaml source files. It uses camlp4 so it is more OCaml friendly.
+
+# +-------------------------------------------------------------------+
+# | The syntax extension                                              |
+# +-------------------------------------------------------------------+
+
+Library optcomp
+  BuildDepends: camlp4.lib, camlp4.quotations.o
+  XMETADescription: Optional compilation with cpp-like directives
+  XMETARequires: camlp4
+  Path: src
+  Install: true
+  Modules: Pa_optcomp
+
+# +-------------------------------------------------------------------+
+# | The standalone versions                                           |
+# +-------------------------------------------------------------------+
+
+Executable "optcomp-o"
+  Install: true
+  Path: src
+  CompiledObject: best
+  MainIs: optcomp_o.ml
+  BuildDepends: optcomp
+
+Executable "optcomp-r"
+  Install: true
+  Path: src
+  CompiledObject: best
+  MainIs: optcomp_r.ml
+  BuildDepends: optcomp
+
+# +-------------------------------------------------------------------+
+# | Doc                                                               |
+# +-------------------------------------------------------------------+
+
+Document "optcomp-api"
+  Title: API reference for optcomp
+  Type: ocamlbuild (0.2)
+  Install: true
+  InstallDir: $htmldir/api
+  DataFiles: style.css
+  BuildTools: ocamldoc
+  XOCamlbuildPath: src
+  XOCamlbuildLibraries: optcomp
+
+# +-------------------------------------------------------------------+
+# | Misc                                                              |
+# +-------------------------------------------------------------------+
+
+SourceRepository head
+  Type: darcs
+  Location: http://darcs.ocamlcore.org/repos/optcomp
+  Browser: http://darcs.ocamlcore.org/cgi-bin/darcsweb.cgi?r=optcomp;a=summary
