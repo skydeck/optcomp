@@ -11,4 +11,4 @@
 
 let module M = Camlp4OCamlRevisedParser.Make(Camlp4.PreCast.Syntax) in ()
 
-let _ = Optcomp.main ()
+let _ = Optcomp.main Optcomp.R

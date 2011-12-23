@@ -12,6 +12,8 @@
 open Camlp4.PreCast
 open Camlp4.Sig
 
+type mode = O | R
+
 (* +-----------------------------------------------------------------+
    | The lexer                                                       |
    +-----------------------------------------------------------------+ *)
@@ -48,14 +50,12 @@ let lexer fname ic =
 module File_map = Map.Make(String)
 
 (* Iterate over the filtered stream. *)
-let rec print current_fname current_line current_col files token_stream =
+let rec print mode current_fname current_line current_col files token_stream =
   match try Some (Stream.next token_stream) with Stream.Failure -> None with
     | None ->
         ()
     | Some (EOI, _) ->
         flush stdout
-    | Some (QUOTATION _, loc) ->
-        Loc.raise loc (Failure "optcomp in standalone mode does not support quotations")
     | Some (tok, loc) ->
         let fname = Loc.file_name loc
         and off = Loc.start_off loc
@@ -70,11 +70,24 @@ let rec print current_fname current_line current_col files token_stream =
             let ic = open_in fname in
             (ic, File_map.add fname ic files)
         in
-        (* Go to the right position in the input. *)
-        if pos_in ic <> off then seek_in ic off;
-        (* Read the part to copy. *)
-        let str = String.create len in
-        really_input ic str 0 len;
+        let str, stop_line, stop_col =
+          match tok with
+            | QUOTATION { q_name = "optcomp"; q_contents = str } ->
+                let str =
+                  (match mode with
+                     | O -> Pa_optcomp.string_of_value_o
+                     | R -> Pa_optcomp.string_of_value_r)
+                    (Pa_optcomp.get_quotation_value str)
+                in
+                (str, line, col + String.length str)
+            | tok ->
+                (* Go to the right position in the input. *)
+                if pos_in ic <> off then seek_in ic off;
+                (* Read the part to copy. *)
+                let str = String.create len in
+                really_input ic str 0 len;
+                (str, Loc.stop_line loc, Loc.stop_off loc - Loc.stop_bol loc)
+        in
         if current_fname = fname && current_line = line && current_col = col then
           (* If we at the right position, just print the string. *)
           print_string str
@@ -88,13 +101,13 @@ let rec print current_fname current_line current_col files token_stream =
           done;
           print_string str
         end;
-        print fname (Loc.stop_line loc) (Loc.stop_off loc - Loc.stop_bol loc) files token_stream
+        print mode fname stop_line stop_col files token_stream
 
 (* +-----------------------------------------------------------------+
    | Entry point                                                     |
    +-----------------------------------------------------------------+ *)
 
-let main () =
+let main mode =
   if Array.length Sys.argv <> 2 then begin
     Printf.eprintf "usage: %s <file>\n%!" (Filename.basename Sys.argv.(0));
     exit 2
@@ -104,7 +117,7 @@ let main () =
     let ic = open_in fname in
     (* Create the filtered token stream. *)
     let token_stream = Pa_optcomp.filter ~lexer (lexer fname ic) in
-    print "" (-1) (-1) File_map.empty token_stream
+    print mode "" (-1) (-1) File_map.empty token_stream
   with exn ->
     flush stdout;
     Format.eprintf "@[<v0>%a@]@." Camlp4.ErrorHandler.print exn;
