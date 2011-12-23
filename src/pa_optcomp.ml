@@ -439,18 +439,6 @@ let parse_directive stream = match Stream.peek stream with
             let expr = parse_expr stream in
             Some(Dir_default(id, expr), loc)
 
-        (* For compatibility *)
-        | "define" ->
-            let id = parse_ident stream in
-            let expr = parse_expr stream in
-            Some(Dir_let(id, expr), loc)
-
-        (* For compatibility *)
-        | "default" ->
-            let id = parse_ident stream in
-            let expr = parse_expr stream in
-            Some(Dir_default(id, expr), loc)
-
         | "if" ->
             Some(Dir_if(parse_expr stream), loc)
 
