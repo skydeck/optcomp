@@ -162,12 +162,10 @@ let o = 42
    | #include and #directory |
    +-------------------------+ *)
 
-(* To include an another file one can use either #use or #include
-   directives.
+(* To include an another file you must use the #include.
 
-   The difference is that with the #include option, the file will be
-   searched in all directories specified with the "-I" command line
-   option or with #directory directives.
+   The file will be searched in all directories specified with the
+   "-I" command line option or with #directory directives.
 
    #directory "dir"
    #include "file"
@@ -178,8 +176,6 @@ let o = 42
    string
 
    - the environment can be accessed and modified by included files
-
-   - #directory directives are interpreted by both optcomp and camlp4
 *)
 
 #include "sample_incl.ml"
@@ -188,9 +184,9 @@ let o = 42
    | Access to definitions in the code |
    +-----------------------------------+ *)
 
-(* We may want to access to values of the optcomp environment. For
-   that we can use the "optcomp" quotation, which will be expansed
-   into an expression or pattern: *)
+(* You may want to access values of the optcomp environment. For that
+   we can use the "optcomp" quotation, which will be expansed into an
+   expression or pattern: *)
 
 #let totolib_version = (1, 1)
 
