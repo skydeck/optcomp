@@ -28,6 +28,10 @@
               + 1)
 #let z = X + y
 
+(* It is also possible to use a pattern: *)
+
+#let x, y, _ = (1, 2, 3)
+
 (* Notes:
 
    - contrary to cpp, expressions are evalued at definition time, so
@@ -102,10 +106,17 @@ let x = 1
 
    - litterals booleans, integers, strings and characters:
    - basic interger operations: +, -, /, *, mod
+   - string concatenation: ^
    - value comparing: =, <>, <, >, <=, >=
    - maximum and minimum: max, min
    - basic boolean operations: or, ||, &&, not
    - pair operations: fst, snd
+   - conversion functions:
+       - to_string
+       - to_bool
+       - to_char
+       - to_int
+   - pretty-printing: show
    - let-bindings
 
    Example:
@@ -115,6 +126,10 @@ let x = 1
 
 #let y = (let (a, b, (c, d)) = x in
           a + b = c || (max b c = 2 && d = a - 1))
+
+#let z = (1, true, 'x', "Hello, world!")
+
+#warning "x = " ^ show x ^ ", y = " ^ show y ^ ", z = " ^ show z
 
 (* +-------------+
    | Indentation |

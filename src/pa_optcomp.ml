@@ -38,8 +38,8 @@ module Env = Map.Make(struct type t = ident let compare = compare end)
 type env = value Env.t
 
 type directive =
-  | Dir_let of ident * Ast.expr
-  | Dir_default of ident * Ast.expr
+  | Dir_let of Ast.patt * Ast.expr
+  | Dir_default of Ast.patt * Ast.expr
   | Dir_if of Ast.expr
   | Dir_else
   | Dir_elif of Ast.expr
@@ -144,7 +144,9 @@ let string_of_value string_of_bool v =
     | Int n ->
         Buffer.add_string buf (string_of_int n)
     | Char ch ->
-        Buffer.add_string buf (Char.escaped ch)
+        Buffer.add_char buf '\'';
+        Buffer.add_string buf (Char.escaped ch);
+        Buffer.add_char buf '\''
     | String s ->
         Buffer.add_char buf '"';
         Buffer.add_string buf (String.escaped s);
@@ -177,6 +179,32 @@ let string_of_value_r v =
        | true -> "True"
        | false -> "False")
     v
+
+let string_of_value_no_pretty v =
+  let buf = Buffer.create 128 in
+  let rec aux = function
+    | Bool b ->
+        Buffer.add_string buf (string_of_bool b)
+    | Int n ->
+        Buffer.add_string buf (string_of_int n)
+    | Char ch ->
+        Buffer.add_char buf ch
+    | String s ->
+        Buffer.add_string buf s;
+    | Tuple [] ->
+        Buffer.add_string buf "()"
+    | Tuple (x :: l) ->
+        Buffer.add_char buf '(';
+        aux x;
+        List.iter
+          (fun x ->
+             Buffer.add_string buf ", ";
+             aux x)
+          l;
+        Buffer.add_char buf ')'
+  in
+  aux v;
+  Buffer.contents buf
 
 (* +-----------------------------------------------------------------+
    | Expression evaluation                                           |
@@ -271,31 +299,100 @@ let rec eval env = function
   | <:expr< fst $x$ >> -> fst (eval_pair env x)
   | <:expr< snd $x$ >> -> snd (eval_pair env x)
 
+  (* Conversions *)
+  | <:expr@loc< to_string $x$ >> ->
+    String(string_of_value_no_pretty (eval env x))
+  | <:expr@loc< to_int $x$ >> ->
+    Int
+      (match eval env x with
+         | String x -> begin
+             try
+               int_of_string x
+             with exn ->
+               Loc.raise loc exn
+           end
+         | Int x ->
+             x
+         | Char x ->
+             int_of_char x
+         | Bool _ ->
+             Loc.raise loc (Failure "cannot convert a boolean to an integer")
+         | Tuple _ ->
+             Loc.raise loc (Failure "cannot convert a tuple to an integer"))
+  | <:expr@loc< to_bool $x$ >> ->
+    Bool
+      (match eval env x with
+         | String x -> begin
+             try
+               bool_of_string x
+             with exn ->
+               Loc.raise loc exn
+           end
+         | Int x ->
+             Loc.raise loc (Failure "cannot convert an integer to a boolean")
+         | Char x ->
+             Loc.raise loc (Failure "cannot convert a character to a boolean")
+         | Bool x ->
+             x
+         | Tuple _ ->
+             Loc.raise loc (Failure "cannot convert a tuple to a boolean"))
+  | <:expr@loc< to_char $x$ >> ->
+    Char
+      (match eval env x with
+         | String x ->
+             if String.length x = 1 then
+               x.[0]
+             else
+               Loc.raise loc (Failure (Printf.sprintf "cannot convert a string of length %d to a character" (String.length x)))
+         | Int x -> begin
+             try
+               char_of_int x
+             with exn ->
+               Loc.raise loc exn
+           end
+         | Char x ->
+             x
+         | Bool _ ->
+             Loc.raise loc (Failure "cannot convert a boolean to a character")
+         | Tuple _ ->
+             Loc.raise loc (Failure "cannot convert a tuple to a character"))
+
+  (* Pretty printing *)
+  | <:expr@loc< show $x$ >> ->
+    String(string_of_value_o (eval env x))
+
   (* Let-binding *)
   | <:expr< let $p$ = $x$ in $y$ >> ->
     let vx = eval env x in
     let env =
       try
-        bind env p vx
-      with
-          Exit -> invalid_type (Ast.loc_of_expr x) (type_of_patt p) (type_of_value vx)
+        bind true env p vx
+      with Exit ->
+        invalid_type (Ast.loc_of_expr x) (type_of_patt p) (type_of_value vx)
     in
     eval env y
 
   | e -> Loc.raise (Ast.loc_of_expr e) (Stream.Error "expression not supported")
 
-and bind env patt value = match patt with
-  | <:patt< $lid:id$ >> ->
-    Env.add id value env
+and bind override env patt value = match patt with
+  | <:patt< $lid:id$ >>
+  | <:patt< $uid:id$ >> ->
+    if override || not (Env.mem id env) then
+      Env.add id value env
+    else
+      env
 
   | <:patt< $tup:patts$ >> ->
     let patts = Ast.list_of_patt patts [] in
     begin match value with
       | Tuple values when List.length values = List.length patts ->
-          List.fold_left2 bind env patts values
+          List.fold_left2 (bind override) env patts values
       | _ ->
           raise Exit
     end
+
+  | <:patt< _ >> ->
+    env
 
   | _ ->
       Loc.raise (Ast.loc_of_patt patt) (Stream.Error "pattern not supported")
@@ -320,6 +417,10 @@ and eval_string env e = match eval env e with
   | String x -> x
   | v -> invalid_type (Ast.loc_of_expr e) Tstring (type_of_value v)
 
+and eval_char env e = match eval env e with
+  | Char x -> x
+  | v -> invalid_type (Ast.loc_of_expr e) Tchar (type_of_value v)
+
 and eval_pair env e = match eval env e with
   | Tuple [x; y] -> (x, y)
   | v -> invalid_type (Ast.loc_of_expr e) (Ttuple [Tvar "a"; Tvar "b"]) (type_of_value v)
@@ -334,12 +435,6 @@ let rec skip_space stream = match Stream.peek stream with
       skip_space stream
   | _ ->
       ()
-
-let parse_equal stream =
-  skip_space stream;
-  match Stream.next stream with
-    | (KEYWORD "=" | SYMBOL "="), _ -> ()
-    | _, loc -> Loc.raise loc (Stream.Error "'=' expected")
 
 let rec parse_eol stream =
   let tok, loc = Stream.next stream in
@@ -377,7 +472,7 @@ let parse_ident stream =
         Loc.raise loc (Stream.Error "identifier expected")
   end
 
-let parse_expr stream =
+let parse_until entry is_stop_token stream =
   (* Lists of opened brackets *)
   let opened_brackets = ref [] in
 
@@ -387,7 +482,7 @@ let parse_expr stream =
      have been closed and a newline is reached *)
   let rec next_token _ =
     Some(match Stream.next stream, !opened_brackets with
-           | (NEWLINE, loc), [] ->
+           | (tok, loc), [] when is_stop_token tok ->
                end_loc := loc;
                (EOI, loc)
 
@@ -416,10 +511,18 @@ let parse_expr stream =
   in
 
   let expr =
-    Gram.parse_tokens_before_filter Syntax.expr_eoi
+    Gram.parse_tokens_before_filter entry
       (not_filtered (Stream.from next_token))
   in
   (expr, Loc.join !end_loc)
+
+let parse_expr stream =
+  parse_until Syntax.expr_eoi (fun tok -> tok = NEWLINE) stream
+
+let parse_patt stream =
+  parse_until Syntax.patt_eoi (function
+                                 | SYMBOL "=" | KEYWORD "=" -> true
+                                 | _ -> false) stream
 
 let parse_directive stream = match Stream.peek stream with
   | Some((KEYWORD "#" | SYMBOL "#"), loc) ->  begin
@@ -430,16 +533,14 @@ let parse_directive stream = match Stream.peek stream with
       match dir with
 
         | "let" ->
-            let id, _ = parse_ident stream in
-            parse_equal stream;
+            let patt, _ = parse_patt stream in
             let expr, end_loc = parse_expr stream in
-            Some(Dir_let(id, expr), Loc.merge loc end_loc)
+            Some(Dir_let(patt, expr), Loc.merge loc end_loc)
 
         | "let_default" ->
-            let id, _ = parse_ident stream in
-            parse_equal stream;
+            let patt, _ = parse_patt stream in
             let expr, end_loc = parse_expr stream in
-            Some(Dir_default(id, expr), Loc.merge loc end_loc)
+            Some(Dir_default(patt, expr), Loc.merge loc end_loc)
 
         | "if" ->
             let expr, end_loc = parse_expr stream in
@@ -647,13 +748,24 @@ let rec next_token lexer state_ref =
           state.stack <- l;
           next_token lexer state_ref
 
-      | Some(Dir_let(id, e), _), _ ->
-          define id (eval !env e);
+      | Some(Dir_let(patt, expr), _), _ ->
+          let value = eval !env expr in
+          env := (
+            try
+              bind true !env patt value;
+            with Exit ->
+              invalid_type (Ast.loc_of_expr expr) (type_of_patt patt) (type_of_value value)
+          );
           next_token lexer state_ref
 
-      | Some(Dir_default(id, e), _), _ ->
-          if not (Env.mem id !env) then
-            define id (eval !env e);
+      | Some(Dir_default(patt, expr), _), _ ->
+          let value = eval !env expr in
+          env := (
+            try
+              bind false !env patt value;
+            with Exit ->
+              invalid_type (Ast.loc_of_expr expr) (type_of_patt patt) (type_of_value value)
+          );
           next_token lexer state_ref
 
       | Some(Dir_include e, _), _ ->
