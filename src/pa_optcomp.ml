@@ -370,9 +370,9 @@ let parse_ident stream =
   let tok, loc = Stream.next stream in
   begin match tok with
     | LIDENT id | UIDENT id ->
-        id
+        (id, loc)
     | KEYWORD kwd when keyword_is_id kwd ->
-        kwd
+        (kwd, loc)
     | _ ->
         Loc.raise loc (Stream.Error "identifier expected")
   end
@@ -381,12 +381,19 @@ let parse_expr stream =
   (* Lists of opened brackets *)
   let opened_brackets = ref [] in
 
+  let end_loc = ref Loc.ghost in
+
   (* Return the next token of [stream] until all opened parentheses
      have been closed and a newline is reached *)
   let rec next_token _ =
     Some(match Stream.next stream, !opened_brackets with
            | (NEWLINE, loc), [] ->
-               EOI, loc
+               end_loc := loc;
+               (EOI, loc)
+
+           | (EOI, loc), _ ->
+               end_loc := loc;
+               (EOI, loc)
 
            | ((KEYWORD ("(" | "[" | "{" as b) | SYMBOL ("(" | "[" | "{" as b)), _) as x, l ->
                opened_brackets := b :: l;
@@ -408,68 +415,70 @@ let parse_expr stream =
                x)
   in
 
-  Gram.parse_tokens_before_filter Syntax.expr_eoi
-    (not_filtered (Stream.from next_token))
+  let expr =
+    Gram.parse_tokens_before_filter Syntax.expr_eoi
+      (not_filtered (Stream.from next_token))
+  in
+  (expr, Loc.join !end_loc)
 
 let parse_directive stream = match Stream.peek stream with
   | Some((KEYWORD "#" | SYMBOL "#"), loc) ->  begin
       Stream.junk stream;
 
-      (* Move the location to the beginning of the line *)
-      let (file_name,
-           start_line, start_bol, start_off,
-           stop_line,  stop_bol,  stop_off,
-           ghost) = Loc.to_tuple loc in
-      let loc = Loc.of_tuple (file_name,
-                              start_line, start_bol, start_bol,
-                              start_line, start_bol, start_bol,
-                              ghost) in
+      let dir, loc_dir = parse_ident stream in
 
-      match parse_ident stream with
+      match dir with
 
         | "let" ->
-            let id = parse_ident stream in
+            let id, _ = parse_ident stream in
             parse_equal stream;
-            let expr = parse_expr stream in
-            Some(Dir_let(id, expr), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_let(id, expr), Loc.merge loc end_loc)
 
         | "let_default" ->
-            let id = parse_ident stream in
+            let id, _ = parse_ident stream in
             parse_equal stream;
-            let expr = parse_expr stream in
-            Some(Dir_default(id, expr), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_default(id, expr), Loc.merge loc end_loc)
 
         | "if" ->
-            Some(Dir_if(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_if expr, Loc.merge loc end_loc)
 
         | "else" ->
             parse_eol stream;
-            Some(Dir_else, loc)
+            Some(Dir_else, Loc.merge loc loc_dir)
 
         | "elif" ->
-            Some(Dir_elif(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_elif expr, Loc.merge loc end_loc)
 
         | "endif" ->
             parse_eol stream;
-            Some(Dir_endif, loc)
+            Some(Dir_endif, Loc.merge loc loc_dir)
 
         | "include" ->
-            Some(Dir_include(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_include expr, Loc.merge loc end_loc)
 
         | "directory" ->
-            Some(Dir_directory(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_directory expr, Loc.merge loc end_loc)
 
         | "error" ->
-            Some(Dir_error(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_error expr, Loc.merge loc end_loc)
 
         | "warning" ->
-            Some(Dir_warning(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_warning expr, Loc.merge loc end_loc)
 
         | "default_quotation" ->
-            Some(Dir_default_quotation(parse_expr stream), loc)
+            let expr, end_loc = parse_expr stream in
+            Some(Dir_default_quotation expr, Loc.merge loc end_loc)
 
-        | dir ->
-            Loc.raise loc (Stream.Error (Printf.sprintf "bad directive ``%s''" dir))
+        | _ ->
+            Loc.raise loc_dir (Stream.Error (Printf.sprintf "unknown directive ``%s''" dir))
     end
 
   | _ ->
