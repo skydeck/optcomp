@@ -22,9 +22,10 @@ Description:
 # +-------------------------------------------------------------------+
 
 Library optcomp
-  BuildDepends: camlp4.lib, camlp4.quotations.o
+  BuildDepends: camlp4, camlp4.quotations.o
   XMETADescription: Optional compilation with cpp-like directives
   XMETARequires: camlp4
+  XMETAType: syntax
   Path: src
   Install: true
   Modules: Pa_optcomp
@@ -38,14 +39,14 @@ Executable "optcomp-o"
   Path: src
   CompiledObject: best
   MainIs: optcomp_o.ml
-  BuildDepends: optcomp
+  BuildDepends: camlp4.lib, optcomp
 
 Executable "optcomp-r"
   Install: true
   Path: src
   CompiledObject: best
   MainIs: optcomp_r.ml
-  BuildDepends: optcomp
+  BuildDepends: camlp4.lib, optcomp
 
 # +-------------------------------------------------------------------+
 # | Doc                                                               |
