@@ -67,6 +67,6 @@ Document "optcomp-api"
 # +-------------------------------------------------------------------+
 
 SourceRepository head
-  Type: darcs
-  Location: http://darcs.ocamlcore.org/repos/optcomp
-  Browser: http://darcs.ocamlcore.org/cgi-bin/darcsweb.cgi?r=optcomp;a=summary
+  Type: git
+  Location: https://github.com/diml/optcomp.git
+  Browser: https://github.com/diml/optcomp

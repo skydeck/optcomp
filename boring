@@ -1,4 +1,0 @@
-(^|/)_build($|/)
-^optcomp-.*\.tar\.gz$
-^setup\.data$
-^setup\.log$
