@@ -12,6 +12,7 @@ Authors: Jérémie Dimino
 Homepage: http://optcomp.forge.ocamlcore.org/
 BuildTools: ocamlbuild
 Plugins: DevFiles (0.3), META (0.3)
+XDevFilesEnableMakefile: false
 Synopsis: Optional compilation with cpp-like directives
 Description:
   Optcomp is a syntax extension which handles cpp-like directives in
