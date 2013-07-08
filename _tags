@@ -4,4 +4,34 @@
 <src/optcomp_{o,r}.*>: use_camlp4_full
 
 # OASIS_START
+# DO NOT EDIT (digest: 99cd438f91a9ae8657653dd12f074e08)
+# Ignore VCS directories, you can use the same kind of rule outside 
+# OASIS_START/STOP if you want to exclude directories that contains 
+# useless stuff for the build process
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library optcomp
+"src/optcomp.cmxs": use_optcomp
+# Executable optcomp-o
+<src/optcomp_o.{native,byte}>: use_optcomp
+<src/optcomp_o.{native,byte}>: pkg_camlp4.lib
+<src/optcomp_o.{native,byte}>: pkg_camlp4
+<src/optcomp_o.{native,byte}>: pkg_camlp4.quotations.o
+# Executable optcomp-r
+<src/optcomp_r.{native,byte}>: use_optcomp
+<src/optcomp_r.{native,byte}>: pkg_camlp4.lib
+<src/optcomp_r.{native,byte}>: pkg_camlp4
+<src/optcomp_r.{native,byte}>: pkg_camlp4.quotations.o
+<src/*.ml{,i}>: use_optcomp
+<src/*.ml{,i}>: pkg_camlp4.lib
+<src/*.ml{,i}>: pkg_camlp4
+<src/*.ml{,i}>: pkg_camlp4.quotations.o
 # OASIS_STOP
